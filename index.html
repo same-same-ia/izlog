@@ -635,16 +635,21 @@ var COLS = 11;
           setTimeout(function () { tile.classList.remove('playing'); }, Math.max(60, Math.round(dur * 1000)));
         } catch (e) { console.error(e); }
       }
-      function gridActive() { return loopSeq.length > 0 || pjevQueue.length > 0; }
+      // The grid must KEEP TICKING between taps, otherwise every tap restarts it and fires
+      // immediately -> notes pile on top of each other instead of chaining on the beat.
+      var idleBeats = 0;
+      var IDLE_STOP = 8;            // park the grid only after this many silent beats
       function tick() {
         const c = ctx();
         if (nextBeatTime < c.currentTime) nextBeatTime = c.currentTime;   // catch up after a throttled background tab
         while (nextBeatTime < c.currentTime + SCHEDULE_AHEAD) {
           const dur = beatDur();
-          if (loopSeq.length) { playBeat(loopSeq[loopIdx % loopSeq.length], nextBeatTime, dur); loopIdx++; }
-          if (pjevQueue.length) { playBeat(pjevQueue.shift(), nextBeatTime, dur); }
+          var played = false;
+          if (loopSeq.length) { playBeat(loopSeq[loopIdx % loopSeq.length], nextBeatTime, dur); loopIdx++; played = true; }
+          if (pjevQueue.length) { playBeat(pjevQueue.shift(), nextBeatTime, dur); played = true; }
           nextBeatTime += dur;
-          if (!gridActive()) { stopGrid(); break; }
+          idleBeats = played ? 0 : idleBeats + 1;
+          if (idleBeats > IDLE_STOP) { stopGrid(); break; }   // silent long enough: park it
         }
       }
       function startGrid() {
@@ -652,6 +657,7 @@ var COLS = 11;
         const c = ctx();
         if (c.state === 'suspended') c.resume();
         nextBeatTime = c.currentTime + 0.06;
+        idleBeats = 0;
         gridTimer = setInterval(tick, LOOKAHEAD_MS);
       }
       function stopGrid() {
