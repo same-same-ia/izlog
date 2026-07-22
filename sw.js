@@ -1,7 +1,7 @@
 /* IMM izlog service worker: cache-first, fully-offline board.
    The cache name is stamped at build time from a content hash of the built page,
    so every rebuild rolls the cache; activate deletes the old one. */
-var CACHE = 'imm-izlog-68f8a703b9d4';
+var CACHE = 'imm-izlog-3b8b43b5a154';
 var ASSETS = ['./', './index.html', './manifest.json',
               './icon-192.png', './icon-512.png', './icon-180.png'];
 
