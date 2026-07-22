@@ -618,11 +618,13 @@ var COLS = 11;
           const eff = TRANSPOSE + MODE_TABLES[MODE][item.vowel];
           const buf = item.bufferFor(eff);
           const src = c.createBufferSource();
-          src.buffer = buf;
           if (dur > buf.duration) {                 // slow beat: hold (loop) the vowel
-            const lp = loopPointsFor(buf, item.vowel, eff);
-            src.loop = true; src.loopStart = lp.loopStart; src.loopEnd = lp.loopEnd;
-          }                                         // fast/equal beat: natural clip, truncated by stop
+            const held = item.heldBufferFor(eff);
+            src.buffer = held.buffer;
+            src.loop = true; src.loopStart = held.loopStart; src.loopEnd = held.loopEnd;
+          } else {                                  // fast/equal beat: natural clip, truncated by stop
+            src.buffer = buf;
+          }
           const g = c.createGain();
           g.gain.setValueAtTime(0, time);
           g.gain.linearRampToValueAtTime(1, time + ATTACK);
@@ -686,7 +688,29 @@ var COLS = 11;
         let s2 = s1 + Math.round(nper * period);
         s1 = snapZero(data, s1);
         s2 = snapZero(data, Math.min(s2, data.length - 1));
-        return { loopStart: s1 / fs, loopEnd: s2 / fs };
+        return { s1: s1, s2: s2 };
+      }
+      // The synth's own ~28 Hz amplitude modulation (flap/murmur texture) is not an integer
+      // number of cycles inside the loop window, so the envelope jumps at every wrap ("mucanje"
+      // Ivan hears, worst on ru/mu). Flattening divides the held segment by its own local RMS
+      // envelope so there is nothing left to jump at the seam.
+      function flattenHeld(buf, s1, s2) {
+        const fs = buf.sampleRate, d = buf.getChannelData(0);
+        const out = ctx().createBuffer(1, buf.length, fs), o = out.getChannelData(0);
+        o.set(d);
+        const n = s2 - s1, w = Math.round(0.040 * fs), half = w >> 1;   // 40 ms >> the ~28 Hz AM period
+        if (n < w * 2) return out;
+        const pre = new Float64Array(n + 1);
+        for (let i = 0; i < n; i++) { const v = d[s1 + i]; pre[i + 1] = pre[i] + v * v; }
+        const mean = Math.sqrt(pre[n] / n);
+        for (let i = 0; i < n; i++) {
+          const a = Math.max(0, i - half), b = Math.min(n, i + half);
+          const e = Math.sqrt((pre[b] - pre[a]) / (b - a));
+          let g = (e > 1e-6) ? mean / e : 1;
+          if (g < 0.3) g = 0.3; if (g > 3) g = 3;
+          o[s1 + i] = d[s1 + i] * g;
+        }
+        return out;
       }
       function stopDrone() {
         if (!drone) return;
@@ -703,15 +727,14 @@ var COLS = 11;
         stopDrone();
         try {
           const eff = TRANSPOSE + MODE_TABLES[MODE][item.vowel] - 12;
-          const buf = item.bufferFor(eff);
+          const held = item.heldBufferFor(eff);
           const c = ctx();
           if (c.state === 'suspended') c.resume();
           const src = c.createBufferSource();
-          src.buffer = buf;
-          const lp = loopPointsFor(buf, item.vowel, eff);
+          src.buffer = held.buffer;
           src.loop = true;
-          src.loopStart = lp.loopStart;
-          src.loopEnd = lp.loopEnd;
+          src.loopStart = held.loopStart;
+          src.loopEnd = held.loopEnd;
           const g = c.createGain();
           g.gain.value = 0.5;
           src.connect(g);
@@ -742,7 +765,8 @@ var COLS = 11;
         tile.querySelector('.kana').textContent = t.kana;
         tile.querySelector('.romaji').textContent = t.romaji;
         if (!t.silent) {
-          const st = { voiced: null, noise: null, fs: 48000, cache: {}, order: [], decoded: false };
+          const st = { voiced: null, noise: null, fs: 48000, cache: {}, order: [],
+                       loopCache: {}, loopOrder: [], decoded: false };
           jobs.push(function () {
             if (t.audioVoiced) {
               return Promise.all([decodeUri(t.audioVoiced), decodeUri(t.audioNoise)]).then(function (r) {
@@ -788,7 +812,21 @@ var COLS = 11;
             if (st.order.length > 6) delete st.cache[st.order.shift()];
             return buf;
           }
-          const item = { tile: tile, vowel: t.vowel, bufferFor: bufferFor };
+          // Flattened, loop-ready variant of bufferFor(shift) — same cache lifetime/size,
+          // computed once per effective shift (loop start/end move with transpose too).
+          function heldBufferFor(shift) {
+            const key = String(shift);
+            if (st.loopCache[key]) return st.loopCache[key];
+            const buf = bufferFor(shift);
+            const p = loopPointsFor(buf, t.vowel, shift);
+            const flat = flattenHeld(buf, p.s1, p.s2);
+            const held = { buffer: flat, loopStart: p.s1 / st.fs, loopEnd: p.s2 / st.fs };
+            st.loopCache[key] = held;
+            st.loopOrder.push(key);
+            if (st.loopOrder.length > 6) delete st.loopCache[st.loopOrder.shift()];
+            return held;
+          }
+          const item = { tile: tile, vowel: t.vowel, bufferFor: bufferFor, heldBufferFor: heldBufferFor };
           tile.addEventListener('animationend', function (ev) {
             if (ev.animationName === 'tapQueued') tile.classList.remove('tap-queued');
           });
