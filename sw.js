@@ -1,14 +1,18 @@
 /* IMM izlog service worker: cache-first, fully-offline board.
    The cache name is stamped at build time from a content hash of the built page,
    so every rebuild rolls the cache; activate deletes the old one. */
-var CACHE = 'imm-izlog-14a97bb5f5c1';
+var CACHE = 'imm-izlog-cd5200b53878';
 var ASSETS = ['./', './index.html', './manifest.json',
               './icon-192.png', './icon-512.png', './icon-180.png'];
 
 self.addEventListener('install', function (e) {
   e.waitUntil(
     caches.open(CACHE)
-      .then(function (c) { return c.addAll(ASSETS); })
+      .then(function (c) {
+        // Through the network, not the HTTP cache: Pages sends max-age=600, so a plain
+        // addAll within ten minutes of a visit could store the OLD files under the NEW name.
+        return c.addAll(ASSETS.map(function (u) { return new Request(u, { cache: 'reload' }); }));
+      })
       .then(function () { return self.skipWaiting(); })
   );
 });
