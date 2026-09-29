@@ -1025,6 +1025,11 @@ var WORLDS = {"dur": {"name": "dur", "group": "osnovni", "P": 7, "header": "K:D 
         if (ARMED.hold) u.push(HOLD);          // chōonpu: the mora sounds one beat longer
         return u;
       }
+      // A hardware press's own loudness (a MIDI velocity, 0..1) rides on a per-press view of
+      // the tile's item: the queue and the loop keep it per entry, and playBeat reads it.
+      function atLevel(item, level) {
+        return Object.create(item, { level: { value: level } });
+      }
       function disarm() {
         ['rest', 'hold'].forEach(function (k) {
           ARMED[k] = false;
@@ -1091,9 +1096,10 @@ var WORLDS = {"dur": {"name": "dur", "group": "osnovni", "P": 7, "header": "K:D 
             src.buffer = buf;
           }
           const g = c.createGain();
+          const peak = item.level || 1;              // a hardware press's loudness; a tap is 1
           g.gain.setValueAtTime(0, time);
-          g.gain.linearRampToValueAtTime(1, time + ATTACK);
-          g.gain.setValueAtTime(1, time + Math.max(ATTACK, dur - RELEASE));
+          g.gain.linearRampToValueAtTime(peak, time + ATTACK);
+          g.gain.setValueAtTime(peak, time + Math.max(ATTACK, dur - RELEASE));
           g.gain.linearRampToValueAtTime(0, time + dur);
           src.connect(g); g.connect(master());
           src.start(time); src.stop(time + dur + 0.03);
@@ -1241,11 +1247,19 @@ var WORLDS = {"dur": {"name": "dur", "group": "osnovni", "P": 7, "header": "K:D 
           d.src.stop(c.currentTime + 0.3);
         } catch (e) { try { d.src.stop(); } catch (_) {} }
       }
-      function startDrone(item) {
-        stopDrone();
+      // The drone's pitch: its vowel in the world's HOME window (a pedal: the degree does not
+      // move it), an octave down, at the current Pomak.
+      function droneEff(item) {
+        return TRANSPOSE + homeOffsets()[item.vowel] - 12;
+      }
+      // follow: the key or the scale moved under a sounding drone. It glides in from inside its
+      // loop, with no new attack, while the old one fades out (Ivan's rule of 2026-08-18: fade
+      // out, fade in).
+      function startDrone(item, follow) {
         try {
-          const eff = TRANSPOSE + homeOffsets()[item.vowel] - 12;
-          const held = item.heldBufferFor(eff);
+          const eff = droneEff(item);
+          const held = item.heldBufferFor(eff);   // the slow part: the old drone plays on meanwhile
+          stopDrone();
           const c = ctx();
           wake();
           const src = c.createBufferSource();
@@ -1254,20 +1268,33 @@ var WORLDS = {"dur": {"name": "dur", "group": "osnovni", "P": 7, "header": "K:D 
           src.loopStart = held.loopStart;
           src.loopEnd = held.loopEnd;
           const g = c.createGain();
-          g.gain.value = 0.5;
+          if (follow) {                        // mirrors stopDrone's fade-out
+            g.gain.setValueAtTime(0, c.currentTime);
+            g.gain.setTargetAtTime(0.5, c.currentTime, 0.05);
+          } else g.gain.value = 0.5;
           src.connect(g);
           g.connect(master());
-          src.start();
+          src.start(0, follow ? held.loopStart : 0);
           liveSources.add(src); src.onended = function () { liveSources.delete(src); };
           item.tile.classList.add('droning');
-          drone = { item: item, src: src, gain: g };
+          drone = { item: item, src: src, gain: g, eff: eff };
         } catch (err) { console.error(err); }
       }
+      // Ljestvica and Pomak move the system, and nothing that is playing stops for it (Ivan's
+      // rules of 2026-08-18/19, built 2026-09-29): the loop and the pjev queue read the world
+      // and TRANSPOSE when each mora plays, and a drone whose pitch moved follows it to the same
+      // degree of the new system -- tonic to tonic, third to third (u is d in every world, so a
+      // drone on u never moves on a world change). Only Stop clears. The drone restarts once the
+      // clicks settle: every new pitch is one vocoder pass on the main thread, so a run of clicks
+      // pays for one, and a run that comes back pays for none.
+      const DRONE_FOLLOW_MS = 250;
+      let droneFollow = null;
       function systemChanged() {
-        stopDrone();
-        loopSeq = []; loopIdx = 0;
-        pjevQueue.length = 0;
-        if (lastSeq) renderScore(lastSeq);   // same sentence, new key / new transposition
+        if (lastSeq) renderScore(lastSeq);   // same sentence, new key / new scale
+        clearTimeout(droneFollow);
+        droneFollow = setTimeout(function () {
+          if (drone && drone.eff !== droneEff(drone.item)) startDrone(drone.item, true);
+        }, DRONE_FOLLOW_MS);
       }
       // A degree step is NOT a system change: the drone is a PEDAL, so it keeps sounding
       // its held pitch while the pentachord slides around it, and pending taps stay queued
@@ -1397,8 +1424,11 @@ var WORLDS = {"dur": {"name": "dur", "group": "osnovni", "P": 7, "header": "K:D 
               else startDrone(item);
               return;
             }
+            // A hardware body (izlog_hardver.js) presses with a synthetic event whose pressure is
+            // its loudness; a finger, a mouse or a pen always plays at full level.
+            const level = !e.isTrusted && e.pressure > 0 ? e.pressure : 1;
             // the armed signs bind to this syllable: all of the unit goes in, or none of it
-            const unit = unitFor(item);
+            const unit = unitFor(level < 1 ? atLevel(item, level) : item);
             if (PLAYMODE === 'loop') {
               if (loopSeq.length + unit.length <= LOOP_CAP) {
                 unit.forEach(function (it) { loopSeq.push(it); });
@@ -1456,7 +1486,7 @@ var WORLDS = {"dur": {"name": "dur", "group": "osnovni", "P": 7, "header": "K:D 
       function showShift() {
         shiftVal.textContent = (TRANSPOSE > 0 ? '+' : '') + TRANSPOSE;
       }
-      function setShift(v) {                 // Pomak = a system change: stops the drone, clears the queue.
+      function setShift(v) {                 // Pomak moves everything: the drone follows, loop and queue play on.
         v = Math.max(SHIFT_MIN, Math.min(SHIFT_MAX, v));
         if (v === TRANSPOSE) return;
         TRANSPOSE = v;
@@ -1549,5 +1579,358 @@ var WORLDS = {"dur": {"name": "dur", "group": "osnovni", "P": 7, "header": "K:D 
       });
     }
   </script>
+<script>
+var AKORDI = {"table": {":a": "あ", ":i": "い", ":u": "う", ":e": "え", ":o": "お", "Y:a": "や", "Y:i": "い", "Y:u": "ゆ", "Y:e": "え", "Y:o": "よ", "P:a": "ぱ", "P:i": "ぴ", "P:u": "ぷ", "P:e": "ぺ", "P:o": "ぽ", "PY:a": "ぴゃ", "PY:i": "ぴ", "PY:u": "ぴゅ", "PY:e": "ぺ", "PY:o": "ぴょ", "Z:a": "あ", "Z:i": "い", "Z:u": "う", "Z:e": "え", "Z:o": "お", "ZY:a": "や", "ZY:i": "い", "ZY:u": "ゆ", "ZY:e": "え", "ZY:o": "よ", "ZP:a": "は", "ZP:i": "ひ", "ZP:u": "ふ", "ZP:e": "へ", "ZP:o": "ほ", "ZPY:a": "ひゃ", "ZPY:i": "ひ", "ZPY:u": "ひゅ", "ZPY:e": "へ", "ZPY:o": "ひょ", "k:a": "か", "k:i": "き", "k:u": "く", "k:e": "け", "k:o": "こ", "kY:a": "きゃ", "kY:i": "き", "kY:u": "きゅ", "kY:e": "け", "kY:o": "きょ", "kP:a": "か", "kP:i": "き", "kP:u": "く", "kP:e": "け", "kP:o": "こ", "kPY:a": "きゃ", "kPY:i": "き", "kPY:u": "きゅ", "kPY:e": "け", "kPY:o": "きょ", "kZ:a": "が", "kZ:i": "ぎ", "kZ:u": "ぐ", "kZ:e": "げ", "kZ:o": "ご", "kZY:a": "ぎゃ", "kZY:i": "ぎ", "kZY:u": "ぎゅ", "kZY:e": "げ", "kZY:o": "ぎょ", "kZP:a": "か", "kZP:i": "き", "kZP:u": "く", "kZP:e": "け", "kZP:o": "こ", "kZPY:a": "きゃ", "kZPY:i": "き", "kZPY:u": "きゅ", "kZPY:e": "け", "kZPY:o": "きょ", "s:a": "さ", "s:i": "し", "s:u": "す", "s:e": "せ", "s:o": "そ", "sY:a": "しゃ", "sY:i": "し", "sY:u": "しゅ", "sY:e": "せ", "sY:o": "しょ", "sP:a": "さ", "sP:i": "し", "sP:u": "す", "sP:e": "せ", "sP:o": "そ", "sPY:a": "しゃ", "sPY:i": "し", "sPY:u": "しゅ", "sPY:e": "せ", "sPY:o": "しょ", "sZ:a": "ざ", "sZ:i": "じ", "sZ:u": "ず", "sZ:e": "ぜ", "sZ:o": "ぞ", "sZY:a": "じゃ", "sZY:i": "じ", "sZY:u": "じゅ", "sZY:e": "ぜ", "sZY:o": "じょ", "sZP:a": "さ", "sZP:i": "し", "sZP:u": "す", "sZP:e": "せ", "sZP:o": "そ", "sZPY:a": "しゃ", "sZPY:i": "し", "sZPY:u": "しゅ", "sZPY:e": "せ", "sZPY:o": "しょ", "t:a": "た", "t:i": "ち", "t:u": "つ", "t:e": "て", "t:o": "と", "tY:a": "ちゃ", "tY:i": "ち", "tY:u": "ちゅ", "tY:e": "て", "tY:o": "ちょ", "tP:a": "た", "tP:i": "ち", "tP:u": "つ", "tP:e": "て", "tP:o": "と", "tPY:a": "ちゃ", "tPY:i": "ち", "tPY:u": "ちゅ", "tPY:e": "て", "tPY:o": "ちょ", "tZ:a": "だ", "tZ:i": "ぢ", "tZ:u": "づ", "tZ:e": "で", "tZ:o": "ど", "tZY:a": "じゃ", "tZY:i": "ぢ", "tZY:u": "じゅ", "tZY:e": "で", "tZY:o": "じょ", "tZP:a": "た", "tZP:i": "ち", "tZP:u": "つ", "tZP:e": "て", "tZP:o": "と", "tZPY:a": "ちゃ", "tZPY:i": "ち", "tZPY:u": "ちゅ", "tZPY:e": "て", "tZPY:o": "ちょ", "n:a": "な", "n:i": "に", "n:u": "ぬ", "n:e": "ね", "n:o": "の", "nY:a": "にゃ", "nY:i": "に", "nY:u": "にゅ", "nY:e": "ね", "nY:o": "にょ", "nP:a": "な", "nP:i": "に", "nP:u": "ぬ", "nP:e": "ね", "nP:o": "の", "nPY:a": "にゃ", "nPY:i": "に", "nPY:u": "にゅ", "nPY:e": "ね", "nPY:o": "にょ", "nZ:a": "な", "nZ:i": "に", "nZ:u": "ぬ", "nZ:e": "ね", "nZ:o": "の", "nZY:a": "にゃ", "nZY:i": "に", "nZY:u": "にゅ", "nZY:e": "ね", "nZY:o": "にょ", "nZP:a": "な", "nZP:i": "に", "nZP:u": "ぬ", "nZP:e": "ね", "nZP:o": "の", "nZPY:a": "にゃ", "nZPY:i": "に", "nZPY:u": "にゅ", "nZPY:e": "ね", "nZPY:o": "にょ", "h:a": "は", "h:i": "ひ", "h:u": "ふ", "h:e": "へ", "h:o": "ほ", "hY:a": "ひゃ", "hY:i": "ひ", "hY:u": "ひゅ", "hY:e": "へ", "hY:o": "ひょ", "hP:a": "ぱ", "hP:i": "ぴ", "hP:u": "ぷ", "hP:e": "ぺ", "hP:o": "ぽ", "hPY:a": "ぴゃ", "hPY:i": "ぴ", "hPY:u": "ぴゅ", "hPY:e": "ぺ", "hPY:o": "ぴょ", "hZ:a": "ば", "hZ:i": "び", "hZ:u": "ぶ", "hZ:e": "べ", "hZ:o": "ぼ", "hZY:a": "びゃ", "hZY:i": "び", "hZY:u": "びゅ", "hZY:e": "べ", "hZY:o": "びょ", "hZP:a": "は", "hZP:i": "ひ", "hZP:u": "ふ", "hZP:e": "へ", "hZP:o": "ほ", "hZPY:a": "ひゃ", "hZPY:i": "ひ", "hZPY:u": "ひゅ", "hZPY:e": "へ", "hZPY:o": "ひょ", "m:a": "ま", "m:i": "み", "m:u": "む", "m:e": "め", "m:o": "も", "mY:a": "みゃ", "mY:i": "み", "mY:u": "みゅ", "mY:e": "め", "mY:o": "みょ", "mP:a": "ま", "mP:i": "み", "mP:u": "む", "mP:e": "め", "mP:o": "も", "mPY:a": "みゃ", "mPY:i": "み", "mPY:u": "みゅ", "mPY:e": "め", "mPY:o": "みょ", "mZ:a": "ま", "mZ:i": "み", "mZ:u": "む", "mZ:e": "め", "mZ:o": "も", "mZY:a": "みゃ", "mZY:i": "み", "mZY:u": "みゅ", "mZY:e": "め", "mZY:o": "みょ", "mZP:a": "ま", "mZP:i": "み", "mZP:u": "む", "mZP:e": "め", "mZP:o": "も", "mZPY:a": "みゃ", "mZPY:i": "み", "mZPY:u": "みゅ", "mZPY:e": "め", "mZPY:o": "みょ", "r:a": "ら", "r:i": "り", "r:u": "る", "r:e": "れ", "r:o": "ろ", "rY:a": "りゃ", "rY:i": "り", "rY:u": "りゅ", "rY:e": "れ", "rY:o": "りょ", "rP:a": "ら", "rP:i": "り", "rP:u": "る", "rP:e": "れ", "rP:o": "ろ", "rPY:a": "りゃ", "rPY:i": "り", "rPY:u": "りゅ", "rPY:e": "れ", "rPY:o": "りょ", "rZ:a": "ら", "rZ:i": "り", "rZ:u": "る", "rZ:e": "れ", "rZ:o": "ろ", "rZY:a": "りゃ", "rZY:i": "り", "rZY:u": "りゅ", "rZY:e": "れ", "rZY:o": "りょ", "rZP:a": "ら", "rZP:i": "り", "rZP:u": "る", "rZP:e": "れ", "rZP:o": "ろ", "rZPY:a": "りゃ", "rZPY:i": "り", "rZPY:u": "りゅ", "rZPY:e": "れ", "rZPY:o": "りょ", "w:a": "わ", "w:i": "い", "w:u": "う", "w:e": "え", "w:o": "を", "wY:a": "わ", "wY:i": "い", "wY:u": "う", "wY:e": "え", "wY:o": "を", "wP:a": "わ", "wP:i": "い", "wP:u": "う", "wP:e": "え", "wP:o": "を", "wPY:a": "わ", "wPY:i": "い", "wPY:u": "う", "wPY:e": "え", "wPY:o": "を", "wZ:a": "わ", "wZ:i": "い", "wZ:u": "う", "wZ:e": "え", "wZ:o": "を", "wZY:a": "わ", "wZY:i": "い", "wZY:u": "う", "wZY:e": "え", "wZY:o": "を", "wZP:a": "わ", "wZP:i": "い", "wZP:u": "う", "wZP:e": "え", "wZP:o": "を", "wZPY:a": "わ", "wZPY:i": "い", "wZPY:u": "う", "wZPY:e": "え", "wZPY:o": "を"}, "letters": {"k": "k", "s": "s", "t": "t", "n": "n", "h": "h", "m": "m", "r": "r", "w": "w", "g": "kZ", "z": "sZ", "d": "tZ", "b": "hZ", "p": "hP", "j": "sZY", "f": "h"}, "pairs": {"sh": "sY", "ch": "tY", "ts": "t"}, "special": {"'": "ん", "x": "っ", "-": "ー"}, "pitch": {"base": 50, "native": {"u": 0, "o": 2, "a": 4, "e": 5, "i": 7}}, "pads": {"36": "k", "37": "s", "38": "t", "39": "n", "40": "h", "41": "m", "42": "r", "43": "w", "44": "Z", "45": "y", "46": "P", "47": "'", "48": "x", "49": "-", "72": "k", "74": "s", "76": "t", "77": "n", "79": "h", "81": "m", "83": "r", "84": "w", "86": "Z", "88": "y", "89": "P", "91": "'", "93": "x", "95": "-"}, "padChannel": 10};
+// Hardver -- appended to every izlog page by build_izlog.render_page() (izlog_hardver.py),
+// which puts the chord table in front of it as `var AKORDI` (computed and tested in
+// izlog_akordi.py; this file keeps no table of its own).
+//
+// A "Hardver" checkbox in the control strip. While it is ticked, the computer keyboard plays
+// the whole board, and the text field is greyed out so no keystroke lands there. The
+// tipkovnica's one rule: the vowel fires (a i u e o), every other letter is a predznak that
+// only prepares. Held while a vowel goes down, a predznak joins the chord (hold k, play a i u =
+// ka ki ku). Tapped on its own, it is armed and waits for the next vowel; a second lone tap
+// disarms it, like the tajac and drzanje tiles. Order does not matter, except that the last
+// onset letter wins (k then s = s) and the pairs the tiles are spelled with (sh, ch, ts) stay
+// pairs -- so typing a tile's own label plays that tile: ka, shi, tsu, fu, gyo, ja, pyu, wo.
+// g z d b p j carry their own voicing or p; y is the glide. The next vowel spends every armed
+// predznak. What cannot join drops and the rest sings (y + i = i, w + u = u).
+//
+// ' plays n (the moraic nasal), with or without an armed n; x and - press the sokuon and
+// long-vowel tiles, which arm themselves as a tap would; Esc is Stop and clears the predznaci.
+// While any predznak is held or armed, the five tiles that a i u e o would play now take the
+// tint of an armed sign.
+//
+// A key presses its tile the way a finger does: the tile's own pointerdown handler runs, so
+// pjev / loop / drone and the armed signs behave exactly as for a tap. The first keystroke also
+// unlocks the sound -- izlog already counts keydown as the gesture that starts audio. Letters
+// are read by meaning (e.key), not position: any layout, Shift and Caps Lock included. A held
+// key does not repeat; Ctrl / Alt / Meta combinations stay the browser's. Nothing is
+// remembered: after a reload the box is off, like the rest of the strip.
+(function () {
+  var AK = AKORDI;
+  var VOWELS = ['a', 'i', 'u', 'e', 'o'];
+
+  var tileByKana = {};
+  document.querySelectorAll('#board .tile').forEach(function (tile) {
+    var kana = tile.querySelector('.kana');
+    if (kana) tileByKana[kana.textContent] = tile;
+  });
+  var textIn = document.getElementById('text-in');
+  var stopBtn = document.getElementById('stop-btn');
+
+  var group = document.createElement('label');
+  group.className = 'ctl-group';
+  // The one hint a stranger gets on the public page; to_english() swaps this exact string.
+  group.title = "Tipkovnica svira ploču. Slova kao na pločicama: ka, shi, kya. Tipke: ' = ん, x = tajac, - = držanje, Esc = stop.";
+  group.innerHTML = '<input type="checkbox" id="hardver-box">' +
+                    '<span class="ctl-label">Hardver</span>';
+  var controls = document.getElementById('controls');
+  controls.insertBefore(group, controls.querySelector('.spacer'));
+  var box = group.querySelector('input');
+
+  var style = document.createElement('style');
+  style.textContent = '#text-in:disabled { opacity: 0.45; }' +
+    '.tile.hw-armed { background: var(--accent-tint); border-color: var(--accent); }' +
+    '.tile.hw-armed .romaji { color: var(--accent); font-weight: 600; }';
+  document.head.appendChild(style);
+
+  var state = {};      // letter -> { held, usedWhileHeld, armed, t }; t orders "last wins"
+  var clock = 0;
+  function isPredznak(letter) {       // Z and P are the MPC's mark pads (voicing, p); no letter
+    return letter === 'y' || letter === 'c' || letter === 'Z' || letter === 'P' ||
+           AK.letters.hasOwnProperty(letter);
+  }
+  function active(letter) { var s = state[letter]; return !!s && (s.held || s.armed); }
+  function activeLetters() {
+    return Object.keys(state).filter(active)
+      .sort(function (a, b) { return state[a].t - state[b].t; });
+  }
+
+  // Letters in press order -> the prefix the table is keyed by. The same steps as
+  // izlog_akordi.chord(), whose pytest is the specification.
+  function chordPrefix(letters) {
+    var bundle = '', prev = null, glide = false, marks = '';
+    letters.forEach(function (letter) {
+      if (letter === 'y') { glide = true; return; }
+      if (letter === 'Z' || letter === 'P') { marks += letter; return; }   // add, never replace
+      var pair = prev && (AK.pairs[prev + letter] || AK.pairs[letter + prev]);
+      if (pair) bundle = pair;
+      else if (AK.letters.hasOwnProperty(letter)) bundle = AK.letters[letter];
+      if (AK.letters.hasOwnProperty(letter) || letter === 'c') prev = letter;
+    });
+    var all = bundle + marks;
+    var onset = bundle && 'ZPY'.indexOf(bundle[0]) < 0 ? bundle[0] : '';
+    return onset + (all.indexOf('Z') >= 0 ? 'Z' : '') + (all.indexOf('P') >= 0 ? 'P' : '') +
+           (glide || bundle.indexOf('Y') >= 0 ? 'Y' : '');
+  }
+  function target(vowel) { return AK.table[chordPrefix(activeLetters()) + ':' + vowel]; }
+
+  var tinted = [];
+  function showArmed() {
+    tinted.forEach(function (tile) { tile.classList.remove('hw-armed'); });
+    tinted = [];
+    if (!activeLetters().length) return;
+    VOWELS.forEach(function (v) {
+      var tile = tileByKana[target(v)];
+      if (tile) { tile.classList.add('hw-armed'); tinted.push(tile); }
+    });
+  }
+  function resetAll() { state = {}; showArmed(); }
+  function spend() {             // after a mora fires: armed predznaci are used up, held ones stay
+    Object.keys(state).forEach(function (letter) {
+      var s = state[letter];
+      if (!s.held && !s.armed) return;
+      s.armed = false;
+      if (s.held) s.usedWhileHeld = true;
+    });
+  }
+
+  // level: the press's loudness, 0..1, handed to the page as the event's pressure (the page
+  // reads it only from a synthetic press). A letter passes none and plays at full level.
+  function pressTile(kana, level) {
+    var tile = tileByKana[kana];
+    if (tile) tile.dispatchEvent(new PointerEvent('pointerdown',
+      { bubbles: true, cancelable: true, pressure: level }));
+  }
+  // A vowel fires: from a letter key or from a MIDI key -- one engine, several bodies, so a k
+  // held on the computer keyboard also joins a vowel played on the MPC.
+  function fireVowel(vowel, level) {
+    pressTile(target(vowel), level);
+    spend();
+    showArmed();
+  }
+  // A predznak goes down or comes up -- a letter key or an MPC pad, the same rule for both.
+  function predznakDown(key) {
+    var s = state[key] || (state[key] = { held: false, usedWhileHeld: false, armed: false, t: 0 });
+    s.held = true;
+    s.usedWhileHeld = false;
+    s.t = ++clock;                         // the newest press is the one that wins
+    showArmed();
+  }
+  function predznakUp(key) {
+    var s = state[key];
+    if (!s || !s.held) return;
+    s.held = false;
+    if (!s.usedWhileHeld) s.armed = !s.armed;   // a lone tap arms; a second lone tap disarms
+    showArmed();
+  }
+  // ' plays n, x and - press the sokuon and long-vowel tiles, which arm themselves.
+  function pressSpecial(key, level) {
+    pressTile(AK.special[key], level);
+    if (key === "'") spend();              // n is a mora: it spends the predznaci like a vowel
+    showArmed();
+  }
+
+  box.addEventListener('change', function () {
+    if (box.checked) textIn.blur();
+    textIn.disabled = box.checked;
+    resetAll();
+    box.blur();          // focus left on the box would let a stray Space switch it off
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (!box.checked) return;
+    if (e.key === 'Escape') { stopBtn.click(); resetAll(); return; }
+    if (e.ctrlKey || e.altKey || e.metaKey || e.isComposing) return;
+    var key = (e.key || '').toLowerCase();
+    if (isPredznak(key)) {
+      e.preventDefault();
+      if (!e.repeat) predznakDown(key);
+      return;
+    }
+    if (AK.special.hasOwnProperty(key)) {
+      e.preventDefault();
+      if (!e.repeat) pressSpecial(key);
+      return;
+    }
+    if (VOWELS.indexOf(key) < 0) return;
+    e.preventDefault();
+    if (e.repeat) return;
+    fireVowel(key);
+  });
+
+  document.addEventListener('keyup', function (e) { predznakUp((e.key || '').toLowerCase()); });
+
+  // A keyup that happens in another window never arrives here: forget held keys, never arm them.
+  window.addEventListener('blur', function () {
+    Object.keys(state).forEach(function (letter) { state[letter].held = false; });
+    showArmed();
+  });
+
+  // --- MIDI: a second body on the same engine (the MPC) -----------------------------------------
+  // The MIDI button asks the browser for MIDI once -- the browser prompts for permission -- and
+  // after that switches MIDI on and off.
+  // Keys: a key sings a vowel when its note names one of the five notes izlog sings right now
+  // (base + native + the world's offset at this degree + Pomak), in ANY octave (Ivan: "sve oktave
+  // isti sustav", for the prototype) -- the voice stays in izlog's register, so the MPC's octave
+  // buttons can never lose the five; they move when Stupanj or Pomak moves.
+  // Pads (channel 10; AKORDI.pads reads both the Chromatic C1 map and the Pad Perform scale the
+  // MPC came in): the predznaci of the agreed layout, held or tapped by the same rule as the
+  // letters; n (the moraic nasal) fires, and the sokuon and long-vowel pads press their tiles.
+  // Nothing on the MPC stops izlog: izlog's own Stop button does (Ivan).
+  // The page keeps its state inside its own script, so it is read from the controls it writes
+  // (mode-select, deg-val, shift-val) and from WORLDS, the page's global data block. A MIDI
+  // message is not a user gesture: the button's click is what unlocks the sound. The line's
+  // texts stay Croatian on the English copy -- they are diagnostics, not controls.
+  var PITCH_ORDER = ['u', 'o', 'a', 'e', 'i'];
+  var NAMES = ['c', 'cis', 'd', 'dis', 'e', 'f', 'fis', 'g', 'gis', 'a', 'b', 'h'];
+  function noteName(n) { return NAMES[n % 12] + (Math.floor(n / 12) - 1); }
+  function currentNotes() {
+    var w = WORLDS[document.getElementById('mode-select').value];
+    var deg = parseInt(document.getElementById('deg-val').textContent, 10) || 0;
+    var shift = parseInt(document.getElementById('shift-val').textContent, 10) || 0;
+    var off = w.off[deg + w.P];
+    var notes = {};
+    PITCH_ORDER.forEach(function (v) { notes[v] = AK.pitch.base + AK.pitch.native[v] + off[v] + shift; });
+    return notes;
+  }
+  function vowelAt(note) {                // same pitch class, any octave
+    var notes = currentNotes();
+    for (var i = 0; i < PITCH_ORDER.length; i++) {
+      if ((((note - notes[PITCH_ORDER[i]]) % 12) + 12) % 12 === 0) return PITCH_ORDER[i];
+    }
+    return null;
+  }
+  var PAD_NAMES = { Z: 'zvučnost', P: 'p', y: 'y', "'": 'nosni n', x: 'tajac', '-': 'držanje' };
+  // The echo, 2026-09-28: the MPC's SELECTED track takes both the keys and the pads (Pad Perform
+  // turns pads into its notes, whatever its input port says), so with the keys' or the pads'
+  // track selected, one body's presses also arrive on the other's channel. The cure is on the
+  // MPC: select a third track that sends nothing to the computer. The keys then play at once.
+  // izlog still watches for the echo, only to say so: a keys'-channel copy that comes after its
+  // pad copy is dropped; one that came first has already sung, and the pad copy then leaves a
+  // warning in the line, so a lost third-track selection shows itself.
+  var ECHO_MS = 15;
+  // Velocity -> loudness (Ivan, 2026-09-29): a key's velocity sets the level its mora sings at,
+  // over the last 24 dB -- 127 is full, 64 about -12 dB, 1 about -24 dB, so a soft key is still
+  // heard. The moraic n on its pad takes the pad's velocity; the predznaci make no sound.
+  var VELOCITY_RANGE_DB = 24;
+  function levelOf(velocity) {
+    return Math.pow(10, -VELOCITY_RANGE_DB * (127 - velocity) / 127 / 20);
+  }
+  var padAt = {};                         // note -> when it last came in on the pads' channel
+  var keyAt = {};                         // note -> when it last came in on a keys' channel
+
+  var midiGroup = document.createElement('div');
+  midiGroup.className = 'ctl-group';
+  midiGroup.innerHTML = '<button id="midi-btn" type="button" aria-pressed="false">MIDI</button>';
+  controls.insertBefore(midiGroup, controls.querySelector('.spacer'));
+  var midiBtn = midiGroup.querySelector('button');
+  midiBtn.title = "Poveži MIDI uređaj (npr. MPC). Tipke pjevaju samoglasnike na svojoj visini.";
+  var midiLine = document.createElement('div');
+  midiLine.id = 'midi-line';
+  midiLine.hidden = true;
+  controls.parentNode.insertBefore(midiLine, controls.nextSibling);
+  style.textContent +=
+    '#midi-btn { border: 2px solid var(--tile-border); background: var(--tile); color: var(--romaji);' +
+    ' border-radius: 12px; padding: 5px 14px; cursor: pointer; font-family: inherit; font-size: 13px;' +
+    ' touch-action: manipulation; }' +
+    '#midi-btn[aria-pressed="true"] { background: var(--accent-tint); border-color: var(--accent);' +
+    ' color: var(--accent); font-weight: 600; }' +
+    '#midi-line { align-self: stretch; padding: 4px 8px 0; font-size: 12px; color: var(--muted); }';
+
+  var midiAccess = null, midiOn = false, portName = '', lastNote = '', lastOther = '';
+  function showMidi(problem) {
+    if (problem) { midiLine.hidden = false; midiLine.textContent = 'MIDI: ' + problem; return; }
+    midiLine.hidden = !midiOn;
+    if (!midiOn) return;
+    var notes = currentNotes();
+    var parts = ['MIDI (' + (portName || 'nijedan uređaj nije spojen') + ')',
+                 'tipke samoglasnika, u svakoj oktavi: ' + PITCH_ORDER.map(function (v) {
+                   return v + ' ' + NAMES[notes[v] % 12];
+                 }).join(', ')];
+    if (lastNote) parts.push('nota: ' + lastNote);
+    if (lastOther) parts.push('ostalo: ' + lastOther);
+    midiLine.textContent = parts.join(' · ');
+  }
+  function onMidi(input, e) {
+    if (!midiOn) return;
+    var d = e.data, status = d[0];
+    portName = input.name || portName;
+    if (status >= 0xF8) return;                   // clock, start/stop, active sensing: not ours
+    var type = status & 0xF0, ch = (status & 0x0F) + 1;
+    var on = type === 0x90 && d[2] > 0, off = type === 0x80 || (type === 0x90 && d[2] === 0);
+    if (ch === AK.padChannel && (on || off)) {    // a pad: a predznak, or n / a sign
+      var key = AK.pads[d[1]];
+      if (on) {
+        var padNow = performance.now();
+        padAt[d[1]] = padNow;
+        lastNote = 'kanal ' + ch + ', pad ' + d[1] + (key ? ' → ' + (PAD_NAMES[key] || key) : '');
+        if (keyAt[d[1]] !== undefined && padNow - keyAt[d[1]] < ECHO_MS) {
+          lastNote += ' (odjek: MPC šalje pad i kao tipku — odaberi treću traku)';
+        }
+        if (key && AK.special.hasOwnProperty(key)) pressSpecial(key, levelOf(d[2]));
+        else if (key) predznakDown(key);
+        showMidi();
+      } else if (key) {
+        predznakUp(key);
+      }
+      return;
+    }
+    if (on) {
+      var note = d[1], at = performance.now();
+      keyAt[note] = at;
+      if (padAt[note] !== undefined && at - padAt[note] < ECHO_MS) {
+        lastNote += ' (odjek na kanalu ' + ch + ' zanemaren)';
+        showMidi();
+        return;
+      }
+      var v = vowelAt(note);
+      lastNote = 'kanal ' + ch + ', ' + note + ' (' + noteName(note) + '), jačina ' + d[2] +
+                 (v ? ' → ' + v + ', pjeva ' + noteName(currentNotes()[v]) : '');
+      if (v) fireVowel(v, levelOf(d[2]));
+      showMidi();
+      return;
+    } else if (off) {
+      return;                                     // a key let go: nothing to do on the grid
+    } else if (type === 0xB0) {
+      lastOther = 'kanal ' + ch + ', CC ' + d[1] + ' = ' + d[2];
+    } else if (type === 0xE0) {
+      lastOther = 'kanal ' + ch + ', pitch bend ' + ((d[2] << 7) | d[1]);
+    } else if (type === 0xD0) {
+      lastOther = 'kanal ' + ch + ', pritisak ' + d[1];
+    } else if (type === 0xA0) {
+      lastOther = 'kanal ' + ch + ', pritisak na ' + d[1] + ' = ' + d[2];
+    } else {
+      lastOther = 'poruka ' + Array.prototype.map.call(d, function (b) { return b.toString(16); }).join(' ');
+    }
+    showMidi();
+  }
+  function attachInputs() {
+    portName = '';
+    midiAccess.inputs.forEach(function (input) {
+      if (!portName) portName = input.name || '';
+      input.onmidimessage = function (e) { onMidi(input, e); };
+    });
+    showMidi();
+  }
+  midiBtn.addEventListener('click', function () {
+    if (midiOn || midiAccess) {
+      midiOn = !midiOn;
+      midiBtn.setAttribute('aria-pressed', midiOn ? 'true' : 'false');
+      showMidi();
+      return;
+    }
+    if (!navigator.requestMIDIAccess) {
+      showMidi('ovaj preglednik nema MIDI, ili adresa nije https ni lokalna');
+      return;
+    }
+    navigator.requestMIDIAccess().then(function (access) {
+      midiAccess = access;
+      midiOn = true;
+      midiBtn.setAttribute('aria-pressed', 'true');
+      access.onstatechange = attachInputs;       // a device plugged in later
+      attachInputs();
+    }, function () { showMidi('pristup nije dopušten'); });
+  });
+  // The five keys move when Stupanj, Pomak or the world moves: keep the line honest.
+  var watch = new MutationObserver(function () { if (midiOn) showMidi(); });
+  ['deg-val', 'shift-val'].forEach(function (id) {
+    watch.observe(document.getElementById(id), { childList: true, characterData: true, subtree: true });
+  });
+  document.getElementById('mode-select').addEventListener('change', function () { if (midiOn) showMidi(); });
+})();
+
+</script>
 </body>
 </html>
