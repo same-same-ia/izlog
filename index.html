@@ -1274,6 +1274,17 @@ var VJEZBA = {"phases": [{"key": "slusaj", "machine": "full", "light": true, "ta
       ['touchend', 'pointerup', 'pointerdown', 'mousedown', 'click', 'keydown'].forEach(function (ev) {
         document.addEventListener(ev, unlockAudio, true);
       });
+      // iOS double-tap zoom (2026-11-01): two fast taps on two tiles both play, then WebKit
+      // zooms the page, although the tiles carry touch-action: manipulation. A double tap on
+      // empty space (between tiles, around the board) zooms too. Tiles play on pointerdown, so
+      // a touchend has nothing left to do anywhere except on the controls that work by click
+      // or focus (and the readouts reset by a double tap, left as they were); cancelling it
+      // stops the zoom. Pinch stays, and a touchend that ends a pan or pinch is not
+      // cancelable. The audio unlock above listens in the capture phase, so it still runs first.
+      const KEEPS_TOUCHEND = 'button, a, input, select, textarea, label, .seg-val';
+      document.addEventListener('touchend', function (e) {
+        if (e.cancelable && e.target.closest && !e.target.closest(KEEPS_TOUCHEND)) e.preventDefault();
+      }, { passive: false });
 
       // --- MP3 -> PCM decode. Replaces the WAV byte-parser: izlog ships MP3 to stay light,
       //     so samples come from decodeAudioData (Promise API, with the old callback form
