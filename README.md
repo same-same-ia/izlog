@@ -19,8 +19,8 @@ a ne odbijanje.
 
 izlog ne prikuplja i ne šalje nikakve podatke. Učitava samo vlastite datoteke (kod i zvučne
 banke glasova) s adrese s koje je otvoren. Nema analitike, kolačića, vanjskih skripti ni
-vanjskih fontova. Na uređaju pamti samo tri postavke: temu, odabrani glas i Pogled; one ne
-napuštaju uređaj. Nakon prvog učitavanja ploča radi bez interneta; glas koji još nije bio
+vanjskih fontova. Na uređaju pamti samo tri postavke (temu, odabrani glas i Pogled) i
+rečenice vježbe koje sam spremiš; ništa od toga ne napušta uređaj. Nakon prvog učitavanja ploča radi bez interneta; glas koji još nije bio
 odabran treba mrežu samo prvi put.
 
 ## Japanske ljestvice
@@ -63,8 +63,8 @@ considered pause while a license is chosen, not a refusal.
 
 **Privacy.** izlog collects nothing and sends nothing. It loads only its own files (code and
 the voices' sound banks) from the address it was opened from. No analytics, no cookies, no
-third-party scripts or fonts. On the device it remembers three settings only (theme, chosen
-voice, View), and they never leave the device. After the first load the board works offline;
+third-party scripts or fonts. On the device it remembers only three settings (theme, chosen
+voice, View) and any exercise phrases you save yourself, and none of it leaves the device. After the first load the board works offline;
 a voice not chosen before needs the network once.
 
 **Japanese scales.** In the Scale picker, group "Japanese", from the brightest toward the
