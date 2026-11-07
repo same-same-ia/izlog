@@ -176,7 +176,10 @@
   .tile .znak { font-size: clamp(20px, 4.2vw, 40px); line-height: 1; color: var(--glyph); }
   .tile .znak svg { height: 1em; width: auto; display: block; }
   .blank { background: transparent; }
-  #typing { align-self: stretch; display: flex; padding: 10px 6px 0; }
+  #typing { align-self: stretch; display: flex; flex-wrap: wrap; padding: 10px 6px 0; }
+  /* what was typed and not read (2026-11-07): quiet, the look of #tiho */
+  #ne-citam { flex-basis: 100%; margin: 6px 2px 0; font-size: 12px; color: var(--muted); }
+  #ne-citam[hidden] { display: none; }
   #text-in {
     flex: 1 1 auto; font-family: inherit; font-size: 16px;   /* 16px: iOS won't zoom */
     padding: 10px 12px; border-radius: 12px; min-width: 0;
@@ -499,6 +502,7 @@
     <input id="text-in" type="text" placeholder="sakura" autocomplete="off"
            autocapitalize="off" autocorrect="off" spellcheck="false"
            aria-label="Upiši slogove">
+    <p id="ne-citam" hidden></p>
   </div>
   <div id="score" data-pogled="notni-zapis" hidden>
     <div id="score-paper"></div>
@@ -1054,12 +1058,28 @@ var VJEZBA = {"phases": [{"key": "slusaj", "machine": "full", "light": true, "ta
                          'ī': 'i', 'î': 'i', 'í': 'i', 'ō': 'o', 'ô': 'o', 'ó': 'o',
                          'ū': 'u', 'û': 'u', 'ú': 'u' };
 
+      // Katakana is the same syllabary in another hand (2026-11-07): a Japanese reader types
+      // toire ni ikitai (トイレに行きたい) — želim na WC, and トイレ is katakana. ァ..ヶ
+      // (U+30A1..U+30F6) sit exactly 0x60 above ぁ..ゖ, so each reads as its hiragana; one with
+      // no tile there (ヴ, ヵ, ヶ, the small vowels of foreign combinations) still drops. ー is
+      // outside the range and stays the HOLD.
+      function toHiragana(ch) {
+        const c = ch.charCodeAt(0);
+        return ch.length === 1 && c >= 0x30A1 && c <= 0x30F6 ? String.fromCharCode(c - 0x60) : ch;
+      }
+
       function tokenize(text) {
         // NFC first, so a pasted o + combining macron is the same letter as ō
-        const s = Array.from(String(text == null ? '' : text).normalize('NFC').toLowerCase())
-                       .map(function (ch) { return LONG_VOWEL[ch] ? LONG_VOWEL[ch] + 'ー' : ch; })
-                       .join('');
+        const typed = Array.from(String(text == null ? '' : text).normalize('NFC').toLowerCase());
+        let s = '';
+        const from = [];   // the typed character behind each unit of s: a dropped one is named as typed
+        typed.forEach(function (ch) {
+          const m = LONG_VOWEL[ch] ? LONG_VOWEL[ch] + 'ー' : toHiragana(ch);
+          s += m;
+          for (let k = 0; k < m.length; k++) from.push(ch);
+        });
         const out = [];
+        const dropped = [];
         let i = 0;
         while (i < s.length) {
           const ch = s[i];
@@ -1090,9 +1110,28 @@ var VJEZBA = {"phases": [{"key": "slusaj", "machine": "full", "light": true, "ta
             if (k.length === n && BY_ROMAJI[k]) { hit = BY_ROMAJI[k]; matchLen = n; break; }
           }
           if (hit) { out.push(hit); i += matchLen; continue; }
-          i += 1;                                         // unknown: dropped silently
+          // unknown: dropped. A letter or a digit is kept for the line under the text box
+          // (kanji above all); punctuation drops without a word, as it always did.
+          if (/[\p{L}\p{N}]/u.test(from[i]) && dropped.indexOf(from[i]) < 0) dropped.push(from[i]);
+          i += 1;
         }
+        out.dropped = dropped;
         return out;
+      }
+
+      // The line under the text box when something typed was not read (2026-11-07). It names
+      // what dropped, in the form it was typed, and what to write instead. A kanji gets its own
+      // wording because it is the case a Japanese reader meets, and the fix is the kana they
+      // already know; anything else (ö, l, ヴ, a digit) is told the three ways in. Quiet, like
+      // the line of hidden settings: no alert, no error, the rest still plays.
+      const NE_CITAM_KANJI = 'kanji ne čitam: {} · piši hiraganom ili katakanom';
+      const NE_CITAM_OSTALO = 'ne čitam: {} · piši hiraganom, katakanom ili latinicom';
+      const NE_CITAM_MAX = 8;
+      function neCitam(dropped) {
+        if (!dropped || !dropped.length) return '';
+        const shown = dropped.slice(0, NE_CITAM_MAX).join(' ') + (dropped.length > NE_CITAM_MAX ? ' …' : '');
+        const kanji = dropped.some(function (ch) { return /\p{Script=Han}/u.test(ch); });
+        return (kanji ? NE_CITAM_KANJI : NE_CITAM_OSTALO).replace('{}', shown);
       }
 
       // The voice (izlog-glasovi): which order the five vowels sing in, at which octave, and
@@ -1250,6 +1289,7 @@ var VJEZBA = {"phases": [{"key": "slusaj", "machine": "full", "light": true, "ta
       }
       let pendingSeq = null;     // typed before decoding finished; runs once READY
       const textIn = document.getElementById('text-in');
+      const neCitamEl = document.getElementById('ne-citam');
 
       function runSequence(seq) {
         pendingSeq = null;         // a new confirmation supersedes any remembered one
@@ -1270,7 +1310,10 @@ var VJEZBA = {"phases": [{"key": "slusaj", "machine": "full", "light": true, "ta
         // IME, not to us — never swallow it and never play a half-composed word.
         if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;
         e.preventDefault();
-        runSequence(tokenize(textIn.value));
+        const seq = tokenize(textIn.value);
+        neCitamEl.textContent = neCitam(seq.dropped);
+        neCitamEl.hidden = !neCitamEl.textContent;
+        runSequence(seq);
       });
 
       // Download name from the engraved romaji: "sa-ku-ra.png". Mirrors imm_score.slug()
