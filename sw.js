@@ -3,7 +3,7 @@
    its voice banks, so every rebuild rolls the cache; activate deletes the old one.
    The default voice is precached with the code; any other voice is cached the first
    time the page fetches it, so a voice chosen once works offline afterwards. */
-var CACHE = 'imm-izlog-8177030561cd';
+var CACHE = 'imm-izlog-4d1c9d3633cd';
 var ASSETS = ['./', './index.html', './manifest.json',
               './icon-192.png', './icon-512.png', './icon-180.png',
               './glasovi/ST.json'];
