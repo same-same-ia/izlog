@@ -118,6 +118,13 @@
     border-radius: 12px; padding: 5px 14px; cursor: pointer; font-family: inherit;
     font-size: 13px; touch-action: manipulation;
   }
+  #drone-lock {
+    border: 2px solid var(--tile-border); background: var(--tile); color: var(--romaji);
+    border-radius: 12px; padding: 5px 12px; cursor: pointer; font-family: inherit;
+    font-size: 13px; touch-action: manipulation;
+  }
+  #drone-lock[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+  body:not([data-playmode="drone"]) #drone-lock { display: none; }
   #loading { font-size: 12px; color: var(--muted); }
   #loading[hidden] { display: none; }
   #board {
@@ -225,6 +232,7 @@
      in the hide rule makes it win whatever order later CSS takes. */
   body:not(.vjezba) #controls .vj-only, body:not(.vjezba) #traka { display: none; }
   body.vjezba #controls .vj-only { display: flex; }
+  body[data-playmode="loop"] #trajanje-group, body[data-playmode="drone"] #trajanje-group { display: none; }
   body.vjezba #traka { display: block; }
   #controls #vj-postavke { flex-wrap: wrap; }
   #vj-play {
@@ -246,6 +254,7 @@
   .vj-slot { min-height: 52px; }
   .vj-prazno { border: 2px dashed var(--tile-border); border-radius: 18px; }
   #traka.vj-drzi .tile { touch-action: none; }   /* dok drzis: a drift or second finger must not cancel the hold */
+  #board.drzi .tile { touch-action: none; }   /* the board's dok drzis (pjev), the same reason */
   .vj-key { width: min(70vw, 280px); min-height: min(30vh, 200px); margin: 0 auto; }
   .vj-key .kana { font-size: clamp(40px, 10vw, 88px); }
   /* Footer (spec 2.4): muted, romaji size; margin-top:auto seats it at the bottom of the
@@ -299,7 +308,7 @@
 </style>
 </head>
 <body>
-  <div id="pogled-popis" role="group" aria-label="Pogled" hidden><label class="pogled-sve"><input type="checkbox" id="pogled-sve">Sve</label><div class="pogled-boxes"><label><input type="checkbox" data-pogled-box="glas">Glas</label><label><input type="checkbox" data-pogled-box="mod">Mod</label><label><input type="checkbox" data-pogled-box="glasnoca">Glasnoća</label><label><input type="checkbox" data-pogled-box="tempo">Tempo</label><label><input type="checkbox" data-pogled-box="g-proba">G (proba)</label><label><input type="checkbox" data-pogled-box="ljestvica">Ljestvica</label><label><input type="checkbox" data-pogled-box="pomak">Pomak</label><label><input type="checkbox" data-pogled-box="stupanj">Stupanj</label><label><input type="checkbox" data-pogled-box="brzina">Brzina</label><label><input type="checkbox" data-pogled-box="duljina">Duljina</label><label><input type="checkbox" data-pogled-box="otpustanje">Otpuštanje</label><label><input type="checkbox" data-pogled-box="dinamika">Dinamika</label><label><input type="checkbox" data-pogled-box="vjezba-play">▶︎ / pauza i krugovi</label><label><input type="checkbox" data-pogled-box="recenica">Rečenica</label><label><input type="checkbox" data-pogled-box="vjezba-postavke">Postavke vježbe</label><label><input type="checkbox" data-pogled-box="trajanje">Trajanje</label><label><input type="checkbox" data-pogled-box="tekst">Tekst</label><label><input type="checkbox" data-pogled-box="notni-zapis">Notni zapis</label><label><input type="checkbox" data-pogled-box="hardver">Hardver</label><label><input type="checkbox" data-pogled-box="midi">MIDI</label><label><input type="checkbox" data-pogled-box="tema">Tema</label><label><input type="checkbox" data-pogled-box="podnozje">Podnožje</label></div></div>
+  <div id="pogled-popis" role="group" aria-label="Pogled" hidden><label class="pogled-sve"><input type="checkbox" id="pogled-sve">Sve</label><div class="pogled-boxes"><label><input type="checkbox" data-pogled-box="glas">Glas</label><label><input type="checkbox" data-pogled-box="mod">Mod</label><label><input type="checkbox" data-pogled-box="glasnoca">Glasnoća</label><label><input type="checkbox" data-pogled-box="trajanje">Trajanje</label><label><input type="checkbox" data-pogled-box="tempo">Tempo</label><label><input type="checkbox" data-pogled-box="g-proba">G (proba)</label><label><input type="checkbox" data-pogled-box="ljestvica">Ljestvica</label><label><input type="checkbox" data-pogled-box="pomak">Pomak</label><label><input type="checkbox" data-pogled-box="stupanj">Stupanj</label><label><input type="checkbox" data-pogled-box="brzina">Brzina</label><label><input type="checkbox" data-pogled-box="duljina">Duljina</label><label><input type="checkbox" data-pogled-box="otpustanje">Otpuštanje</label><label><input type="checkbox" data-pogled-box="dinamika">Dinamika</label><label><input type="checkbox" data-pogled-box="vjezba-play">▶︎ / pauza i krugovi</label><label><input type="checkbox" data-pogled-box="recenica">Rečenica</label><label><input type="checkbox" data-pogled-box="vjezba-postavke">Postavke vježbe</label><label><input type="checkbox" data-pogled-box="tekst">Tekst</label><label><input type="checkbox" data-pogled-box="notni-zapis">Notni zapis</label><label><input type="checkbox" data-pogled-box="hardver">Hardver</label><label><input type="checkbox" data-pogled-box="midi">MIDI</label><label><input type="checkbox" data-pogled-box="tema">Tema</label><label><input type="checkbox" data-pogled-box="podnozje">Podnožje</label></div></div>
   <div id="controls">
     <div class="ctl-group" id="glas-group" data-pogled="glas"><label class="ctl-label" for="glas-select">Glas</label><select id="glas-select"><option value="ST" selected>muški</option><option value="IZVORNI">izvorni</option><option value="kuroachia">kuroachia namari no nihongo</option></select><p class="glas-opis" data-glas="ST">Formanti japanskog govornika ST · podaci: <a href="https://doi.org/10.5281/zenodo.15227304" target="_blank" rel="noopener">K. Yazawa (Zenodo</a>, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>), uz Yazawa &amp; Kondo 2019 · naša obrada · sintetizirano, nije snimka.</p><p class="glas-opis" data-glas="IZVORNI" hidden>Izvorni glas sintetizatora, s japanskim ɯ · sintetizirano, nije snimka.</p><p class="glas-opis" data-glas="kuroachia" hidden>Japanski s hrvatskim naglaskom: zaobljeni u, poredak i-e-a-o-u.</p></div>
     <div class="ctl-group" data-pogled="mod">
@@ -310,6 +319,7 @@
         <button class="seg-btn" data-playmode="drone" aria-pressed="false">drone</button>
         <button class="seg-btn" data-playmode="vjezba" aria-pressed="false">vježba</button>
       </div>
+      <button id="drone-lock" type="button" aria-pressed="true" aria-label="Zaključaj dron">lock</button>
     </div>
     <div class="ctl-group">
       <button id="stop-btn" type="button" aria-label="Zaustavi">stop</button>
@@ -381,6 +391,13 @@
         <button class="seg-btn" id="deg-dec" aria-label="stupanj dolje">&minus;</button>
         <span class="seg-val" id="deg-val" title="dvostruki dodir vraća na stupanj 0">0</span>
         <button class="seg-btn" id="deg-inc" aria-label="stupanj gore">+</button>
+      </div>
+    </div>
+    <div class="ctl-group" id="trajanje-group" data-pogled="trajanje">
+      <span class="ctl-label">Trajanje</span>
+      <div class="seg" id="seg-trajanje" role="group" aria-label="Trajanje tona">
+        <button class="seg-btn active" data-trajanje="tempo" aria-pressed="true">tempo</button>
+        <button class="seg-btn" data-trajanje="drzi" aria-pressed="false">dok držiš</button>
       </div>
     </div>
     <div class="ctl-group" data-pogled="tempo">
@@ -480,13 +497,6 @@
       <div class="seg" id="seg-klik" role="group" aria-label="Gustoća klika">
         <button class="seg-btn active" data-klik="every" aria-pressed="true">svaka</button>
         <button class="seg-btn" data-klik="half" aria-pressed="false">druga</button>
-      </div>
-    </div>
-    <div class="ctl-group vj-only" data-pogled="trajanje">
-      <span class="ctl-label">Trajanje</span>
-      <div class="seg" id="seg-trajanje" role="group" aria-label="Trajanje tona">
-        <button class="seg-btn active" data-trajanje="tempo" aria-pressed="true">tempo</button>
-        <button class="seg-btn" data-trajanje="drzi" aria-pressed="false">dok držiš</button>
       </div>
     </div>
     <span class="spacer"></span>
@@ -1000,6 +1010,7 @@ var VJEZBA = {"phases": [{"key": "slusaj", "machine": "full", "light": true, "ta
       let DEGREE = 0;          // window start, -P..+P for the current world
       let TRANSPOSE = 0;       // whole-system shift, SHIFT_MIN..SHIFT_MAX
       let PLAYMODE = 'pjev';   // 'pjev' = sung taps (queue) | 'loop' = looped taps
+      document.body.dataset.playmode = 'pjev';
                                // | 'drone' = held tile -1 octave | 'vjezba' = the exercise
       let READY = false;       // true once every clip is decoded (MP3 -> PCM)
       let decodeStarted = false;   // decode is kicked once, on the first user gesture
@@ -1853,6 +1864,104 @@ var VJEZBA = {"phases": [{"key": "slusaj", "machine": "full", "light": true, "ta
           };
         } catch (e) { console.error(e); return { release: function () {} }; }
       }
+      // 'dok držiš' on the board (spec 2026-11-07 section 2): a press sounds at once, open-length,
+      // and its owner's lift ends it through the current Otpuštanje (note.release(now)). Mono:
+      // a second press anywhere steals it, and the first owner's late lift then does nothing.
+      // The owner is a finger's pointerId, 'k:' + key or 'm:' + note. HOLD_MAX_S is the vježba's
+      // open length too (izlog_vjezba.js shares this closure).
+      const HOLD_MAX_S = 600;
+      let DRONE_LOCK = true;
+      // `const VJ` is declared by the vježba script, injected near the end of this closure; until
+      // that line has run, reading VJ is a temporal-dead-zone ReferenceError. initPogled runs
+      // showTiho at load (a saved Pogled that hides Trajanje reaches its VJ line), so every read
+      // of VJ that can run at load asks this first. Set true right after the injection.
+      let vjGotov = false;
+      let boardHeld = null;        // { note, owner } while a board press sounds
+      function boardHolds() {
+        return (PLAYMODE === 'pjev' && vjGotov && VJ.trajanje() === 'drzi') || (PLAYMODE === 'drone' && !DRONE_LOCK);
+      }
+      function boardChoke() {
+        if (!boardHeld) return;
+        const held = boardHeld;
+        boardHeld = null;
+        dijagEnd(held.t0);
+        try { held.note.release(ctx().currentTime); } catch (e) {}
+      }
+      function boardPress(item, owner, level) {
+        dijagSay('steal');
+        boardChoke();
+        boardHeld = { note: playBeat(level !== 1 ? atLevel(item, level) : item, ctx().currentTime, HOLD_MAX_S),
+                      owner: owner, t0: performance.now() };
+      }
+      function boardLift(owner) {
+        if (typeof owner === 'string') dijagSay('lift');   // a Hardver key ('k:') or MIDI ('m:')
+        if (boardHeld && boardHeld.owner === owner) boardChoke();
+        if (drone && drone.owner !== null && drone.owner === owner) stopDrone();
+      }
+      // A lift that never arrives (alt-tab, an OS dialog, the page hidden) must not leave a note ringing.
+      function boardDropHeld() {
+        boardChoke();
+        if (drone && drone.owner !== null) stopDrone();
+      }
+      function syncBoardHold() {   // CSS: touch-action none on the tiles while a press is a hold
+        board.classList.toggle('drzi', boardHolds());
+      }
+      // Trajanje changed (the vježba's #seg-trajanje handler calls this): the held note ends with
+      // what it was, no sign stays armed, and the board and the quiet line follow.
+      function trajanjeChanged() {
+        boardChoke();
+        disarm();
+        syncBoardHold();
+        showTiho();
+      }
+      // ?dijag=drzi (spec 2026-11-07 section 6): on the iPhone a hold first failed, then worked
+      // after a scroll. Each end of a held board note (a pjev hold or an unlocked drone) writes one
+      // line under the controls, `<event> <ms held>`, newest first: pointerup, pointercancel, blur,
+      // hidden, steal (a new press took it), lift (a Hardver key or MIDI note-off), stop (Stop, or a
+      // control change: Trajanje, mode, voice, board, lock). It tells a cancelled touch from a
+      // lifted one. A press that would hold but came before the clips decoded writes `cold` (no
+      // number): it is replayed once at tempo length. A developer line, not copy: no Croatian in it, so no EN label. Without the
+      // parameter there is no element and no listener. The listeners are registered here, before
+      // the board's own lift listeners, so they name the event first in either at-target order.
+      const DIJAG = new URLSearchParams(location.search).get('dijag') === 'drzi';
+      const DIJAG_LINES = 6;
+      let dijagEl = null, dijagWhy = null;
+      // The reason holds only while the event that named it is being dispatched (window.event):
+      // a Stop click that follows a pointerup in the same task is a 'stop', not a 'pointerup'.
+      function dijagSay(kind) {
+        if (dijagEl) dijagWhy = { kind: kind, ev: window.event };
+      }
+      function dijagSee(kind) { return function () { dijagSay(kind); }; }
+      function dijagLine(text) {   // newest first, DIJAG_LINES kept
+        const old = dijagEl.textContent ? dijagEl.textContent.split('\n') : [];
+        dijagEl.textContent = [text].concat(old).slice(0, DIJAG_LINES).join('\n');
+      }
+      function dijagEnd(t0) {
+        const why = dijagWhy && dijagWhy.ev === window.event ? dijagWhy.kind : 'stop';
+        if (!dijagEl || why === 'follow') return;   // a drone following Pomak has not ended
+        dijagLine(why + ' ' + Math.round(performance.now() - t0));
+      }
+      if (DIJAG) {
+        dijagEl = document.createElement('div');
+        dijagEl.id = 'drzi-dijag';
+        // a fixed height for DIJAG_LINES lines: the board must not move under a finger mid-test
+        dijagEl.style.cssText = 'white-space: pre; font: 13px/1.4 ui-monospace, monospace; padding: 4px 16px; height: 8.4em; overflow: hidden;';
+        document.getElementById('controls').after(dijagEl);
+        document.addEventListener('pointerup', dijagSee('pointerup'), true);
+        document.addEventListener('pointercancel', dijagSee('pointercancel'), true);
+        window.addEventListener('blur', function (e) { if (e.target === window) dijagSay('blur'); }, true);
+        document.addEventListener('visibilitychange', function () { if (document.hidden) dijagSay('hidden'); }, true);
+      }
+      ['pointerup', 'pointercancel'].forEach(function (ev) {
+        document.addEventListener(ev, function (e) { boardLift(e.pointerId); });
+      });
+      window.addEventListener('blur', boardDropHeld);
+      document.addEventListener('visibilitychange', function () { if (document.hidden) boardDropHeld(); });
+      board.addEventListener('contextmenu', function (e) {   // a long press is a hold, not a menu
+        if (board.classList.contains('drzi')) e.preventDefault();
+      });
+      // Hardver and MIDI (separate scripts, outside this closure) end a held board note here.
+      window.PLOCA = { lift: boardLift };
       // A pjev sequence lasts while every beat has an entry, and ends at the first empty beat
       // (2026-11-01; spec 3.2): the grid holds on that beat T and parks once T + G_eff has passed,
       // so the next tap is a new first mora that starts inside the tap (startGridNow). Until then a
@@ -1999,6 +2108,7 @@ var VJEZBA = {"phases": [{"key": "slusaj", "machine": "full", "light": true, "ta
         pjevClear();                // clear FIRST, so tick cannot schedule into the duck
         loopSeq = []; loopIdx = 0;
         stopDrone();
+        boardChoke();               // a held board note ends with the rest
         stopGrid();
         clearLights();              // no light may outlive the sound it stood for
         disarm();                   // Stop is a clean slate: no sign stays armed
@@ -2074,6 +2184,7 @@ var VJEZBA = {"phases": [{"key": "slusaj", "machine": "full", "light": true, "ta
         if (!drone) return;
         const d = drone;
         drone = null;
+        if (d.owner !== null) dijagEnd(d.t0);
         d.item.tile.classList.remove('droning');
         try {
           const c = ctx();
@@ -2092,13 +2203,16 @@ var VJEZBA = {"phases": [{"key": "slusaj", "machine": "full", "light": true, "ta
       // attack -- from inside its loop, or on a synth voice on the oscillator alone -- while the old
       // one fades out (the rule of 2026-08-18: fade out, fade in). A first press on a synth voice
       // is the clip with its consonant, and the oscillator from the join on.
-      function startDrone(item, follow) {
+      function startDrone(item, follow, owner) {
         try {
           const eff = droneEff(item);
           // the slow part: the old drone plays on meanwhile
           const plan = item.oscFor ? item.oscFor(eff) : null;
           const held = plan ? null : item.heldBufferFor(eff);
+          const t0 = follow && drone ? drone.t0 : performance.now();   // ?dijag=drzi
+          dijagSay(follow ? 'follow' : 'steal');
           stopDrone();
+          dijagWhy = null;
           const c = ctx();
           wake();
           const g = c.createGain();
@@ -2131,7 +2245,7 @@ var VJEZBA = {"phases": [{"key": "slusaj", "machine": "full", "light": true, "ta
             liveSources.add(s); s.onended = function () { liveSources.delete(s); };
           });
           item.tile.classList.add('droning');
-          drone = { item: item, parts: parts, gain: g, eff: eff };
+          drone = { item: item, parts: parts, gain: g, eff: eff, owner: owner === undefined ? null : owner, t0: t0 };
         } catch (err) { console.error(err); }
       }
       // Ljestvica and Pomak move the system, and nothing that is playing stops for it (the
@@ -2149,7 +2263,7 @@ var VJEZBA = {"phases": [{"key": "slusaj", "machine": "full", "light": true, "ta
         scheduleWarm();
         clearTimeout(droneFollow);
         droneFollow = setTimeout(function () {
-          if (drone && drone.eff !== droneEff(drone.item)) startDrone(drone.item, true);
+          if (drone && drone.eff !== droneEff(drone.item)) startDrone(drone.item, true, drone.owner);
         }, DRONE_FOLLOW_MS);
       }
       // A degree step is NOT a system change: the drone is a PEDAL, so it keeps sounding
@@ -2228,6 +2342,7 @@ var VJEZBA = {"phases": [{"key": "slusaj", "machine": "full", "light": true, "ta
             wake();
             if (PLAYMODE === 'vjezba') return;
             if (!READY) return;
+            if (boardHolds()) return;                      // live, the gap is the sokuon and the hold the long vowel
             if (PLAYMODE === 'drone') return;              // a drone is already a hold
             if (kind === 'pause') {
               // 2026-11-01 (brzi dodir, spec 3.4): kyufu is an action, not a toggle -- one tap =
@@ -2362,15 +2477,22 @@ var VJEZBA = {"phases": [{"key": "slusaj", "machine": "full", "light": true, "ta
             wake();
             if (PLAYMODE === 'vjezba') return;
             if (!READY && audioUnlocked) startDecoding();   // a bank that failed is tried again
+            // ?dijag=drzi: a hold pressed before the clips decoded is not a hold at all -- it replays
+            // once at tempo length and writes no end line -- so it says `cold` instead of nothing
+            if (!READY && dijagEl && boardHolds()) dijagLine('cold');
             if (!READY) { pendingItem = item; return; }   // remember tap; plays once decoded
             if (PLAYMODE === 'drone') {
-              if (drone && drone.item === item) stopDrone();
-              else startDrone(item);
+              const owner = e.izlogOwner !== undefined ? e.izlogOwner : e.pointerId;
+              if (DRONE_LOCK) { if (drone && drone.item === item) stopDrone(); else startDrone(item); }
+              else if (drone && drone.item === item) drone.owner = owner;
+              else startDrone(item, false, owner);
               return;
             }
             // A hardware body (izlog_hardver.js) presses with a synthetic event whose pressure is
             // how hard it struck; a finger, a mouse or a pen always plays at a tap's level.
             const level = !e.isTrusted && e.pressure > 0 ? levelFor(e.pressure) : 1;
+            // dok držiš: at once, not through the queue; the armed signs are ignored and kept
+            if (PLAYMODE === 'pjev' && boardHolds()) { boardPress(item, e.izlogOwner !== undefined ? e.izlogOwner : e.pointerId, level); return; }
             // the armed signs bind to this syllable: all of the unit goes in, or none of it
             const unit = unitFor(level !== 1 ? atLevel(item, level) : item);
             if (PLAYMODE === 'loop') {
@@ -2399,6 +2521,7 @@ var VJEZBA = {"phases": [{"key": "slusaj", "machine": "full", "light": true, "ta
         GLAS_ID = id;
         glasSelect.value = id;
         document.querySelectorAll('.glas-opis').forEach(function (p) { p.hidden = p.dataset.glas !== id; });
+        boardChoke();                            // a held note belongs to the old board's tile
         board.innerHTML = '';
         BY_KANA = {};
         BY_ROMAJI = {};
@@ -2566,6 +2689,7 @@ var VJEZBA = {"phases": [{"key": "slusaj", "machine": "full", "light": true, "ta
         if (pm === 'loop' && PLAYMODE === 'loop') { loopSeq = []; loopIdx = 0; }   // re-tap = clear loop
         const was = PLAYMODE;
         PLAYMODE = pm;
+        document.body.dataset.playmode = pm;
         document.body.classList.toggle('vjezba', pm === 'vjezba');
         if (was === 'vjezba' && pm !== 'vjezba') VJ.leave();
         if (pm === 'vjezba' && was !== 'vjezba') {
@@ -2576,6 +2700,8 @@ var VJEZBA = {"phases": [{"key": "slusaj", "machine": "full", "light": true, "ta
           vjezbaHome();
           VJ.enter(fromLoop);
         }
+        boardChoke();                        // a held board note ends with the mode it was pressed in
+        syncBoardHold();
         showTiho();
       });
       // Dvostruki dodir: two taps on a stepper's number within DOUBLE_TAP_MS reset it; one tap
@@ -2917,12 +3043,22 @@ var VJEZBA = {"phases": [{"key": "slusaj", "machine": "full", "light": true, "ta
       // 2026-08-24 safety condition. Shown whenever it has an entry, the list open or closed.
       // Its words are read from the page's own labels, so the English copy says them in English.
       function labelBefore(id) { return document.getElementById(id).previousElementSibling.textContent; }
+      function setDroneLock(on) {
+        DRONE_LOCK = on;
+        document.getElementById('drone-lock').setAttribute('aria-pressed', on ? 'true' : 'false');
+        if (!on && drone && drone.owner === null) stopDrone();   // nobody could lift a locked drone
+        if (on && drone) drone.owner = null;                     // a held drone stays, now locked
+        syncBoardHold();
+        showTiho();
+      }
+      document.getElementById('drone-lock').addEventListener('click', function () { setDroneLock(!DRONE_LOCK); });
       function showTiho() {
         if (!pogledGotov) return;   // the setters run once at load, before the list exists
         const parts = [];
-        const vj = PLAYMODE === 'vjezba';
+        const vj = vjGotov && PLAYMODE === 'vjezba';   // VJ before the injection: see vjGotov
         if (pogledSkriva('glas') && GLAS_ID !== GLAS_DEFAULT) parts.push(glasSelect.options[glasSelect.selectedIndex].text);
         if (pogledSkriva('mod') && (PLAYMODE === 'loop' || PLAYMODE === 'drone')) parts.push(document.querySelector('[data-playmode="' + PLAYMODE + '"]').textContent);
+        if (pogledSkriva('mod') && PLAYMODE === 'drone' && !DRONE_LOCK) parts.push(document.querySelector('[data-trajanje="drzi"]').textContent);
         if (pogledSkriva('glasnoca') && VOLUME !== VOLUME_DEFAULT) parts.push(labelBefore('stepper-volume') + ' ' + VOLUME);
         if (pogledSkriva('tempo') && TEMPO !== TEMPO_DEFAULT) parts.push(labelBefore('stepper-tempo') + ' ' + TEMPO);
         if (vj && VJ.visine() !== 'five') {
@@ -2938,7 +3074,7 @@ var VJEZBA = {"phases": [{"key": "slusaj", "machine": "full", "light": true, "ta
         if (pogledSkriva('brzina') && FACTOR !== 1) parts.push(labelBefore('seg-speed') + ' ' + document.querySelector('[data-speed="' + FACTOR + '"]').getAttribute('aria-label'));
         if (pogledSkriva('duljina') && GATE_PCT !== 100) parts.push(labelBefore('stepper-gate') + ' ' + GATE_PCT + ' %');
         if (pogledSkriva('otpustanje') && releaseIdx !== RELEASE_DEFAULT_IDX) parts.push(labelBefore('stepper-release') + ' ' + RELEASE_STEPS_MS[releaseIdx] + ' ms');
-        if (pogledSkriva('trajanje') && vj && VJ.trajanje() === 'drzi') parts.push(document.querySelector('[data-trajanje="drzi"]').textContent);
+        if (pogledSkriva('trajanje') && (vj || PLAYMODE === 'pjev') && vjGotov && VJ.trajanje() === 'drzi') parts.push(document.querySelector('[data-trajanje="drzi"]').textContent);
         if (pogledSkriva('vjezba-postavke') && vj && VJ.click() === 'half') {
           parts.push(labelBefore('seg-klik') + ' ' + document.querySelector('[data-klik="half"]').textContent);
         }
@@ -2974,7 +3110,8 @@ var VJEZBA = {"phases": [{"key": "slusaj", "machine": "full", "light": true, "ta
           VJ.decoded();                            // a play pressed before the clips decoded
           if (pendingItem) {                       // play the mora the first tap intended
             const it = pendingItem; pendingItem = null;
-            if (PLAYMODE === 'drone') startDrone(it);
+            // unlocked, a replay would be a drone nobody holds: the cold first tap only unlocks audio
+            if (PLAYMODE === 'drone') { if (DRONE_LOCK) startDrone(it); }
             else if (PLAYMODE === 'loop') { loopSeq.push(it); startGrid(); }
             else { pjevPush(it, null); pjevKick(); }
           }
@@ -3000,7 +3137,8 @@ var VJEZBA = {"phases": [{"key": "slusaj", "machine": "full", "light": true, "ta
 // Page functions it calls (spec 4.3): ctx, wake, master, glas, startGrid, beatDur, effOf, playBeat,
 // light, holdsAfter, tokenize, engrave, wireSeg, showTiho, atLevel, levelFor, sokuonLyric,
 // longRomaji. Values it reads: READY,
-// LOOP_CAP, BEAT_TILE, liveSources, HOLD, REST_SPACE, REST_SOKUON, PLAYMODE.
+// LOOP_CAP, BEAT_TILE, liveSources, HOLD, REST_SPACE, REST_SOKUON, PLAYMODE, HOLD_MAX_S
+// (the open length of 'dok držiš', shared with the board). It also calls trajanjeChanged.
 const VJ = (function () {
   const T = VJEZBA;
   const traka = document.getElementById('traka');
@@ -3013,7 +3151,6 @@ const VJ = (function () {
   const PAD = { rest: 'pad' };          // the padding beat: part of the exercise, never typed
   const QUIET = { release: function () {} };   // a sign sounds nothing: only its lights end early
   const PER_LINE = 12;                  // slots per line of the strip; longer phrases wrap
-  const HOLD_MAX_S = 600;               // 'dok držiš': an open note, ended by its lift, not by its length
 
   let seq = [], tones = [];             // the phrase, one entry per beat, and its two tones
   let visine = 'five';                  // what is heard and engraved: 'one' | 'two' | 'five'
@@ -3476,7 +3613,7 @@ const VJ = (function () {
   wireSeg('#seg-trajanje .seg-btn', function (b) {
     if (tapNote) choke(ctx().currentTime);   // a held note ends with what it was
     setTrajanje(b.dataset.trajanje);
-    showTiho();
+    trajanjeChanged();                       // the board's held note too; it ends with showTiho()
   });
   wireSeg('#seg-klik .seg-btn', function (b) {
     click = b.dataset.klik;
@@ -3547,6 +3684,9 @@ const VJ = (function () {
 window.VJ = VJ;
 showTiho();                               // the quiet line, now that VJ exists
 
+      vjGotov = true;                          // VJ exists from here on (boardHolds and showTiho read it)
+      syncBoardHold();                         // once at load, now that VJ exists
+      showTiho();                              // ...and the quiet line with its Trajanje entry
     })();
   </script>
 
@@ -3684,15 +3824,20 @@ var AKORDI = {"table": {":a": "あ", ":i": "い", ":u": "う", ":e": "え", ":o"
   // strength: how hard the press was, 0..1 (a MIDI velocity / 127), handed to the page as the
   // event's pressure; the page turns it into loudness (levelFor) and reads it only from a
   // synthetic press. A letter passes none and plays at a tap's level.
-  function pressTile(kana, strength) {
+  // owner: who holds the note (a key 'k:..' or a MIDI note 'm:..'), so its lift can end it.
+  function pressTile(kana, strength, owner) {
     var tile = tileByKana[kana];
-    if (tile) tile.dispatchEvent(new PointerEvent('pointerdown',
-      { bubbles: true, cancelable: true, pressure: strength }));
+    if (!tile) return;
+    var ev = new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pressure: strength });
+    if (owner !== undefined) ev.izlogOwner = owner;
+    tile.dispatchEvent(ev);
   }
+  // A key or note let go: ends the board's held note or unlocked drone it owns; a no-op otherwise.
+  function ploceLift(owner) { if (window.PLOCA) window.PLOCA.lift(owner); }
   // A vowel fires: from a letter key or from a MIDI key -- one engine, several bodies, so a k
   // held on the computer keyboard also joins a vowel played on the MPC.
-  function fireVowel(vowel, strength) {
-    pressTile(target(vowel), strength);
+  function fireVowel(vowel, strength, owner) {
+    pressTile(target(vowel), strength, owner);
     spend();
     showArmed();
   }
@@ -3712,8 +3857,8 @@ var AKORDI = {"table": {":a": "あ", ":i": "い", ":u": "う", ":e": "え", ":o"
     showArmed();
   }
   // ' plays n, x and - press the sokuon and long-vowel tiles, which arm themselves.
-  function pressSpecial(key, strength) {
-    pressTile(AK.special[key], strength);
+  function pressSpecial(key, strength, owner) {
+    pressTile(AK.special[key], strength, owner);
     if (key === "'") spend();              // n is a mora: it spends the predznaci like a vowel
     showArmed();
   }
@@ -3743,16 +3888,21 @@ var AKORDI = {"table": {":a": "あ", ":i": "い", ":u": "う", ":e": "え", ":o"
     }
     if (AK.special.hasOwnProperty(key)) {
       e.preventDefault();
-      if (!e.repeat) pressSpecial(key);
+      if (!e.repeat) pressSpecial(key, undefined, 'k:' + key);
       return;
     }
     if (VOWELS.indexOf(key) < 0) return;
     e.preventDefault();
     if (e.repeat) return;
-    fireVowel(key);
+    fireVowel(key, undefined, 'k:' + key);
   });
 
-  document.addEventListener('keyup', function (e) { predznakUp((e.key || '').toLowerCase()); });
+  document.addEventListener('keyup', function (e) {
+    var key = (e.key || '').toLowerCase();
+    if (VOWELS.indexOf(key) >= 0 || AK.special.hasOwnProperty(key)) ploceLift('k:' + key);
+    if (!box.checked) return;     // a key held across unticking still ends its note above
+    predznakUp(key);
+  });
 
   // A keyup that happens in another window never arrives here: forget held keys, never arm them.
   window.addEventListener('blur', function () {
@@ -3848,8 +3998,13 @@ var AKORDI = {"table": {":a": "あ", ":i": "い", ":u": "う", ":e": "え", ":o"
     midiLine.textContent = parts.join(' · ');
   }
   function onMidi(input, e) {
-    if (!midiOn) return;
     var d = e.data, status = d[0];
+    // MIDI switched off while a key is held: its note-off still ends the board note it holds
+    // (ploceLift is a no-op for a note nobody owns), so nothing rings until the next press
+    if (!midiOn) {
+      if ((status & 0xF0) === 0x80 || ((status & 0xF0) === 0x90 && d[2] === 0)) ploceLift('m:' + d[1]);
+      return;
+    }
     portName = input.name || portName;
     if (status >= 0xF8) return;                   // clock, start/stop, active sensing: not ours
     var type = status & 0xF0, ch = (status & 0x0F) + 1;
@@ -3879,11 +4034,12 @@ var AKORDI = {"table": {":a": "あ", ":i": "い", ":u": "う", ":e": "え", ":o"
         if (keyAt[d[1]] !== undefined && padNow - keyAt[d[1]] < ECHO_MS) {
           lastNote += ' (odjek: MPC šalje pad i kao tipku — odaberi treću traku)';
         }
-        if (key && AK.special.hasOwnProperty(key)) pressSpecial(key, d[2] / 127);
+        if (key && AK.special.hasOwnProperty(key)) pressSpecial(key, d[2] / 127, 'm:' + d[1]);
         else if (key) predznakDown(key);
         showMidi();
       } else if (key) {
-        predznakUp(key);
+        if (AK.special.hasOwnProperty(key)) ploceLift('m:' + d[1]);
+        else predznakUp(key);
       }
       return;
     }
@@ -3898,11 +4054,12 @@ var AKORDI = {"table": {":a": "あ", ":i": "い", ":u": "う", ":e": "え", ":o"
       var v = vowelAt(note);
       lastNote = 'kanal ' + ch + ', ' + note + ' (' + noteName(note) + '), jačina ' + d[2] +
                  (v ? ' → ' + v + ', pjeva ' + noteName(currentNotes()[v]) : '');
-      if (v) fireVowel(v, d[2] / 127);
+      if (v) fireVowel(v, d[2] / 127, 'm:' + note);
       showMidi();
       return;
     } else if (off) {
-      return;                                     // a key let go: nothing to do on the grid
+      ploceLift('m:' + d[1]);                     // a key let go: ends the note it holds, if any
+      return;
     } else if (type === 0xB0) {
       lastOther = 'kanal ' + ch + ', CC ' + d[1] + ' = ' + d[2];
     } else if (type === 0xE0) {
